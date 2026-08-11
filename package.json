@@ -1,11 +1,24 @@
 {
   "name": "sphere-mcp",
   "version": "0.1.0",
-  "description": "SPHERE privacy boundary as an MCP server — let an AI agent analyse sensitive data without ever receiving an individual record.",
+  "description": "SPHERE privacy boundary as an MCP server \u2014 let an AI agent analyse sensitive data without ever receiving an individual record.",
   "type": "module",
-  "bin": { "sphere-mcp": "src/server.js" },
-  "files": ["src"],
-  "engines": { "node": ">=18" },
+  "bin": {
+    "sphere-mcp": "src/server.js"
+  },
+  "files": [
+    "src",
+    "scripts",
+    "README.html",
+    "PROJECT.html"
+  ],
+  "engines": {
+    "node": ">=18"
+  },
   "license": "UNLICENSED",
-  "private": true
+  "private": true,
+  "scripts": {
+    "docs": "node scripts/build-docs.mjs",
+    "test": "node test/boundary.test.mjs"
+  }
 }

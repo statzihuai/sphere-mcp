@@ -1,0 +1,71 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>SPHERE MCP — Overview</title><style>
+body{font:15px/1.65 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;color:#2b2b2b;background:#faf7f2;max-width:820px;margin:0 auto;padding:32px 28px 72px}
+h1{font-size:27px;border-bottom:2px solid #e6ddd0;padding-bottom:10px;margin-bottom:6px}
+h2{font-size:20px;margin-top:36px;color:#7a5c2e;border-bottom:1px solid #efe9df;padding-bottom:5px}
+h3{font-size:16px;margin-top:26px;color:#5a5346}
+code{background:#efe9df;padding:1px 5px;border-radius:4px;font-size:13px;font-family:ui-monospace,Menlo,monospace}
+pre{background:#efe9df;padding:13px 15px;border-radius:8px;overflow-x:auto;font-size:12.5px;line-height:1.5}
+pre code{background:none;padding:0;font-size:inherit}
+table{border-collapse:collapse;margin:16px 0;width:100%;font-size:14px;display:block;overflow-x:auto}
+td,th{border:1px solid #ddd2c0;padding:7px 10px;text-align:left;vertical-align:top}
+th{background:#efe9df;font-weight:600}
+a{color:#9a6a2b} ul,ol{padding-left:22px} li{margin:4px 0} strong{color:#1c1c1c}
+blockquote{border-left:3px solid #d8c9ad;margin:14px 0;padding:6px 16px;color:#5a5346;background:#f5f1e9;border-radius:0 6px 6px 0}
+hr{border:0;border-top:1px solid #e6ddd0;margin:30px 0}
+.nav{font-size:13px;margin-bottom:22px;padding-bottom:14px;border-bottom:1px solid #e6ddd0}
+.nav a{margin-right:16px;text-decoration:none}
+.foot{margin-top:56px;padding-top:14px;border-top:1px solid #e6ddd0;font-size:12px;color:#8a8378}
+@media (prefers-color-scheme: dark){
+  body{background:#1a1815;color:#ddd8cf}
+  h1{border-color:#3a352d} h2{color:#c9a86a;border-color:#2e2a24} h3{color:#b5ada0}
+  code,pre,th{background:#26231e} td,th{border-color:#3a352d}
+  a{color:#d4a862} strong{color:#f0ece4}
+  blockquote{background:#221f1a;border-left-color:#5a4c33;color:#b5ada0}
+  hr,.nav,.foot{border-color:#3a352d}
+}
+</style></head><body>
+<div class="nav"><a href="README.html">Overview &amp; setup</a><a href="PROJECT.html">Project, plan &amp; status</a><a href="https://github.com/statzihuai/sphere-mcp">GitHub</a></div>
+<h1>sphere-mcp</h1>
+<p>The SPHERE privacy boundary, exposed as an MCP server. An agent analyses sensitive data without ever receiving an individual record.</p>
+<p><strong>Status: Phase 1.</strong> The loop works end to end. The SDC gate and the disclosure ladder are not built yet — see <em>Limits</em> below, and do not make claims beyond them.</p>
+<h2>What it does</h2>
+<table><tr><th>Tool</th><th>The model receives</th></tr><tr><td><code>sphere_open(path)</code></td><td>A format-redacted profile: names, dtypes, distinct counts, missingness, masked patterns (<code>9</code>/<code>X</code>). <strong>No cell values.</strong></td></tr><tr><td><code>sphere_twin(seed?)</code></td><td>A certified synthetic twin + fidelity/privacy scores. Safe to read.</td></tr><tr><td><code>sphere_run(code)</code></td><td>Full results — the twin is synthetic.</td></tr><tr><td><code>sphere_deploy(code)</code></td><td>Only <em>whether it worked</em>. Results go to the <strong>user</strong>, on disk.</td></tr><tr><td><code>sphere_simulate(code, perturbation)</code></td><td>Debugs a real-data discrepancy by perturbing the <strong>twin</strong> until it reproduces the symptom.</td></tr><tr><td><code>sphere_status()</code></td><td>An audit ledger of everything that crossed into the model's context.</td></tr></table>
+<h2>Setup (Claude Desktop)</h2>
+<p><code>~/Library/Application Support/Claude/claude_desktop_config.json</code>:</p>
+<pre><code>{
+  "mcpServers": {
+    "sphere": {
+      "command": "/opt/homebrew/bin/node",
+      "args": ["/absolute/path/to/sphere-mcp/src/server.js"],
+      "env": {
+        "SPHERE_CLI": "/absolute/path/to/sphere-cli/bin/sphere.js",
+        "SPHERE_VAULT": "~/.sphere/vault"
+      }
+    }
+  }
+}</code></pre>
+<p>Restart Claude Desktop. Then:</p>
+<blockquote>I have sensitive data at <code>/path/to/patients.csv</code>. Use SPHERE — I don't want you reading the real records. Profile it, make a twin, explore what's there, and when the analysis looks right, deploy it to the real data.</blockquote>
+<p>Results from the real run land in the session directory as <code>real-output.txt</code> and <code>real-*.png</code>. <strong>You</strong> read them; the model does not.</p>
+<h2>How the guarantee is enforced</h2>
+<p>Not by asking the model nicely. Two mechanisms:</p>
+<ol><li><strong>What we send</strong> — the profiler emits shapes, never values. The real path is never returned to the model (<code>sphere_status</code> says so explicitly).</li><li><strong>What model-authored code can reach</strong> — a macOS Seatbelt profile that denies the whole home tree and re-allows exactly the twin plus a session directory, with network denied outright and an allow-list environment carrying no credentials.</li></ol>
+<p>Verified by attacking it (<code>node test/boundary.test.mjs</code>):</p>
+<pre><code>ok  blocked  read the real CSV by absolute path
+ok  blocked  read the real CSV via pandas
+ok  blocked  list the home directory for other datasets
+ok  blocked  open a network socket to exfiltrate
+ok  blocked  harvest credentials from the environment
+ok  blocked  write outside the session directory
+ok  blocked  read a dataset OUTSIDE the home directory
+ok  ALLOWED  read the twin (this is the point)</code></pre>
+<p>That second-to-last case is there because the first two versions of the sandbox failed it. Denying <code>$HOME</code> misses data on <code>/tmp</code>, <code>/Volumes</code> or a lab mount; and once denied, <code>/tmp</code> still resolved to <code>/private/tmp</code>, which Seatbelt matches instead — so the rule looked right and never fired. Both forms of every path are emitted now.</p>
+<h2>Limits — read before claiming anything</h2>
+<ul><li><strong>No SDC gate yet.</strong> <code>sphere_deploy</code> withholds results from the model entirely, so nothing real flows back today. The moment you add a return path, aggregate outputs can disclose individuals (n=1 group means, min/max, residuals, a scatter plot). Build the gate before you open that door.</li><li><strong>A twin is not automatically non-disclosive.</strong> Extreme values in particular deserve checking before you treat a twin as safe to share — a maximum is always some real individual's value, wherever it appears. Evaluate each twin on its own evidence rather than assuming the category is safe.</li><li><strong>The deny list is a list.</strong> The registered dataset is always denied, by resolved path and containing directory, along with the usual data locations (<code>$HOME</code>, <code>/Users</code>, <code>/Volumes</code>, <code>/mnt</code>, <code>/media</code>, <code>/srv</code>, <code>/data</code>, <code>/tmp</code>). A file outside all of those is readable. Denying everything and allow-listing instead is the better shape and was tried: <code>(deny file-read*)</code> also denies metadata, so the loader cannot resolve its own binary and Python dies with SIGABRT before <code>main()</code>. Worth revisiting with a pinned interpreter.</li><li><strong>macOS only.</strong> The sandbox is Seatbelt. Linux needs bubblewrap or a container, and Linux is what any institutional deployment will run.</li><li><strong>Other tools bypass everything.</strong> This server controls its own tools. If the same client also has shell or filesystem access to the real path, the boundary is a convention. In Claude Desktop that is usually fine (no filesystem tool by default). In Claude Code, add a deny rule; at institutional scale, put the data under a different OS user or in a container.</li><li><strong>Column names reach the model.</strong> Alias them if a name is itself sensitive.</li></ul>
+<h2>Testing</h2>
+<pre><code>node test/boundary.test.mjs</code></pre>
+<p>The tests attack the server rather than exercising it, and each case declares what "blocked" looks like for <em>that</em> mechanism — a denied read raises, a denied directory lists empty, a scrubbed environment yields no keys. Do not collapse these into "did it error?"; an earlier version did and reported two false leaks. A traceback also echoes the offending source line, so never assert on a success sentinel that appears in the code itself.</p>
+<div class="foot">SPHERE MCP · generated from the Markdown source by <code>scripts/build-docs.mjs</code> — edit the .md and rebuild, not the .html.</div>
+</body></html>
