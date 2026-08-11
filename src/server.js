@@ -176,11 +176,12 @@ function newFigures(dir, before) {
   return fs.readdirSync(dir).filter((f) => /\.(png|jpg|jpeg|svg|pdf)$/i.test(f) && !before.has(f));
 }
 
-async function execIn(dir, csvPath, code) {
+async function execIn(dir, csvPath, code, denyReal = S.realPath) {
   const script = writeScript(dir, code);
   const before = new Set(fs.readdirSync(dir));
   const prof = path.join(dir, 'sandbox.sb');
-  fs.writeFileSync(prof, sandboxProfile({ sessionDir: dir, synthPath: csvPath }));
+  // denyReal is null for the deploy run — that run is SUPPOSED to read real data.
+  fs.writeFileSync(prof, sandboxProfile({ sessionDir: dir, synthPath: csvPath, realPath: denyReal }));
   const env = { ...scrubbedEnv(), SPHERE_CSV: csvPath };
   const r = await run('/usr/bin/sandbox-exec', ['-f', prof, python(), script], { cwd: dir, env });
   return { ...r, figures: newFigures(dir, before) };
@@ -211,7 +212,7 @@ async function sphere_deploy({ code }) {
   fs.mkdirSync(outDir, { recursive: true });
   let realStdout = null;
   try {
-    const r = await execIn(outDir, staged, code);
+    const r = await execIn(outDir, staged, code, null);
     realStdout = (r.out || '') + (r.err ? `\n--- stderr ---\n${r.err}` : '');
     log('deploy', 'code executed against REAL data — results withheld from the model');
     if (r.code !== 0) {

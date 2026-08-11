@@ -42,19 +42,55 @@ const q = (s) => String(s).replace(/\\/g, '\\\\').replace(/"/g, '\\"');
  *
  * Network is denied outright: code that can see data must not be able to speak.
  */
-export function sandboxProfile({ sessionDir, synthPath }) {
+export function sandboxProfile({ sessionDir, synthPath, realPath }) {
+  // ⚠️ THE DENY LIST MUST NAME THE REGISTERED FILE, not just "the home tree".
+  //
+  // v1 did `(allow default)` then denied $HOME, assuming sensitive CSVs live
+  // there. They frequently do not — /tmp, /Volumes, /Users/Shared and any lab or
+  // hospital network mount are all outside home and were fully readable. A test
+  // fixture that happened to sit in /var/folders exposed it.
+  //
+  // v2 tried the pure form, `(deny file-read*)` plus a system allow-list. That is
+  // the right shape in principle and it does not work here: file-read* also
+  // denies METADATA, so the dynamic loader cannot resolve its own binary and the
+  // process dies with SIGABRT before main(). `(deny file-read-data)` fails the
+  // same way for Homebrew Python, whose search paths are not practical to
+  // enumerate. Chasing that produces a brittle profile that breaks on every
+  // Python upgrade.
+  //
+  // So: deny the thing we are actually protecting — the registered dataset, by
+  // literal path AND its containing directory — plus the locations user data
+  // realistically lives in. This is enforced, testable, and does not depend on
+  // guessing an interpreter's file layout.
+  //
+  // Residual, stated plainly: a file outside all of these paths and outside the
+  // registered directory is readable. The registered dataset never is, which is
+  // the guarantee this server makes.
+  // ⚠️ RESOLVE SYMLINKS. Seatbelt matches the REAL path, and on macOS /tmp is a
+  // symlink to /private/tmp (likewise /var -> /private/var). A deny for
+  // "/tmp/lab-share" therefore never fires for "/private/tmp/lab-share", and a
+  // dataset there was read straight through a profile that looked correct.
+  // Emit BOTH forms for every path.
+  const real = (p) => { try { return fs.realpathSync(p); } catch { return p; } };
+  const bothForms = (p) => [...new Set([p, real(p)])];
+
   const home = os.homedir();
+  const DATA_AREAS = [home, '/Users', '/Volumes', '/mnt', '/media', '/srv', '/data', '/opt/data', '/tmp', '/private/tmp'];
+  const denies = [];
+  for (const d of DATA_AREAS) for (const f of bothForms(d)) denies.push(`(deny file-read* (subpath "${q(f)}"))`);
+  if (realPath) {
+    for (const f of bothForms(realPath)) denies.push(`(deny file-read* (literal "${q(f)}"))`);
+    for (const f of bothForms(path.dirname(realPath))) denies.push(`(deny file-read* (subpath "${q(f)}"))`);
+  }
   return `(version 1)
 (allow default)
 (deny network*)
 (deny file-write*)
-(deny file-read* (subpath "${q(home)}"))
+${denies.join('\n')}
 (allow file-read* (subpath "${q(path.join(home, 'Library'))}"))
-(allow file-read* (literal "${q(synthPath)}"))
-(allow file-read* (subpath "${q(sessionDir)}"))
-(allow file-write* (subpath "${q(sessionDir)}"))
-(allow file-write* (subpath "/private/tmp"))
-(allow file-write* (subpath "/tmp"))
+${bothForms(synthPath).map((f) => `(allow file-read* (literal "${q(f)}"))`).join('\n')}
+${bothForms(sessionDir).map((f) => `(allow file-read* (subpath "${q(f)}"))`).join('\n')}
+${bothForms(sessionDir).map((f) => `(allow file-write* (subpath "${q(f)}"))`).join('\n')}
 `;
 }
 

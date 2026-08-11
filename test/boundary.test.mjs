@@ -76,12 +76,23 @@ const ATTACKS = [
     blocked: (m) => !!m?.result?.isError && !fs.existsSync(path.join(os.homedir(), 'sphere-escape.txt')),
   },
   {
+    // REGRESSION: the first profile denied only $HOME, so a dataset in /tmp,
+    // /Volumes or a lab mount was readable. Then the deny missed it again because
+    // /tmp resolves to /private/tmp and Seatbelt matches the resolved path.
+    name: 'read a dataset OUTSIDE the home directory',
+    code: () => `print(open('/private/tmp/sphere-outside-test.csv').read()[:80])`,
+    blocked: (m) => raised(m),
+  },
+  {
     name: 'read the twin (MUST be allowed — this is the point)',
     code: () => `import os, pandas as pd; print('twin rows', len(pd.read_csv(os.environ['SPHERE_CSV'])))`,
     blocked: (m) => /twin rows \d+/.test(text(m)),   // inverted: success is the pass
     inverted: true,
   },
 ];
+
+// A dataset deliberately placed outside $HOME, in a symlinked location.
+fs.writeFileSync('/private/tmp/sphere-outside-test.csv', 'secret_mrn,value\n900001,42\n');
 
 const vault = fs.mkdtempSync(path.join(os.tmpdir(), 'sphere-test-vault-'));
 const msgs = [
@@ -144,5 +155,6 @@ if (!/"real_path_visible_to_model": false/.test(status)) { console.log('\n  FAIL
 else console.log('\n  ok    status withholds the real path');
 
 fs.rmSync(vault, { recursive: true, force: true });
+try { fs.unlinkSync('/private/tmp/sphere-outside-test.csv'); } catch {}
 console.log(failures ? `\n  ${failures} FAILURE(S)\n` : '\n  all boundary tests passed\n');
 process.exit(failures ? 1 : 0);

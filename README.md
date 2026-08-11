@@ -65,8 +65,15 @@ ok  blocked  list the home directory for other datasets
 ok  blocked  open a network socket to exfiltrate
 ok  blocked  harvest credentials from the environment
 ok  blocked  write outside the session directory
+ok  blocked  read a dataset OUTSIDE the home directory
 ok  ALLOWED  read the twin (this is the point)
 ```
+
+That second-to-last case is there because the first two versions of the sandbox
+failed it. Denying `$HOME` misses data on `/tmp`, `/Volumes` or a lab mount; and
+once denied, `/tmp` still resolved to `/private/tmp`, which Seatbelt matches
+instead — so the rule looked right and never fired. Both forms of every path are
+emitted now.
 
 ## Limits — read before claiming anything
 
@@ -78,6 +85,13 @@ ok  ALLOWED  read the twin (this is the point)
   deserve checking before you treat a twin as safe to share — a maximum is always
   some real individual's value, wherever it appears. Evaluate each twin on its own
   evidence rather than assuming the category is safe.
+- **The deny list is a list.** The registered dataset is always denied, by
+  resolved path and containing directory, along with the usual data locations
+  (`$HOME`, `/Users`, `/Volumes`, `/mnt`, `/media`, `/srv`, `/data`, `/tmp`). A
+  file outside all of those is readable. Denying everything and allow-listing
+  instead is the better shape and was tried: `(deny file-read*)` also denies
+  metadata, so the loader cannot resolve its own binary and Python dies with
+  SIGABRT before `main()`. Worth revisiting with a pinned interpreter.
 - **macOS only.** The sandbox is Seatbelt. Linux needs bubblewrap or a container,
   and Linux is what any institutional deployment will run.
 - **Other tools bypass everything.** This server controls its own tools. If the
