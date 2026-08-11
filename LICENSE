@@ -1,0 +1,13 @@
+Copyright (c) 2026 Zihuai He, Stanford University.
+
+Permission is granted for academic and non-commercial research use, including
+the right to use, copy, modify and distribute this software for such purposes,
+provided this notice is retained.
+
+Commercial use requires a separate licence. This repository contains the SPHERE
+privacy-boundary and MCP integration only; the SPHERE synthesis method is not
+included and is licensed separately.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND. It has not been
+evaluated by any regulator, and nothing in it constitutes a determination that
+data processed with it is anonymous under GDPR, HIPAA, or any other framework.

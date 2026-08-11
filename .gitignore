@@ -1,0 +1,4 @@
+node_modules/
+.sphere/
+*.log
+.DS_Store
